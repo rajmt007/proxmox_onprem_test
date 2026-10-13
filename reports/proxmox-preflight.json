@@ -1,0 +1,41 @@
+{
+  "title": "Proxmox node preflight status snapshot",
+  "generated_at_utc": "2026-10-13T04:44:59.052389+00:00",
+  "overall_status": "BLOCKED",
+  "is_live_report": false,
+  "note": "Initial repository-time snapshot only. Regenerate through scripts on the user's host/LAN; NOT RUN is not a pass.",
+  "checks": [
+    {
+      "name": "Inventory workbook and Envir worksheet",
+      "status": "PASS",
+      "command": "scripts/inventory_check.py --path inventory/environment-inventory.xlsx --worksheet Envir",
+      "evidence": "Workbook template present; two rows loaded and both requested node entries are PROPOSED. This is a repository check only.",
+      "remediation": "Complete verified network/owner fields and change records to ACTIVE only after live installation.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "Target IP availability (.111/.112)",
+      "status": "NOT RUN",
+      "command": "scripts/check-ip-conflicts.ps1 / router-DHCP reservation lookup",
+      "evidence": "This environment cannot access the user's LAN or DHCP/router. A failed ping alone cannot prove an address is free.",
+      "remediation": "Run the IP probe on the actual LAN and independently check authoritative DHCP/router reservations.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "VMware host resources and nested virtualization",
+      "status": "NOT RUN",
+      "command": "scripts/preflight.ps1 (on the Windows VMware host)",
+      "evidence": "No access to the actual VMware host from this build environment.",
+      "remediation": "Run host preflight; enable nested virtualization in both new VM settings and confirm host capacity.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "Installed Proxmox versions, node networking, name resolution, time, KVM and storage",
+      "status": "NOT RUN",
+      "command": "scripts/check-proxmox-nodes.sh (from an SSH-capable management host)",
+      "evidence": "No live SSH/Proxmox commands were executed during repository construction.",
+      "remediation": "Install into dedicated VM disks only after approval; run the node preflight and resolve every FAIL/BLOCKED status.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    }
+  ]
+}

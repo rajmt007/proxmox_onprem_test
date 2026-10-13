@@ -1,0 +1,3 @@
+name,status,timestamp_utc,command,evidence,remediation
+Cluster creation / join,NOT RUN,2026-10-13T04:44:59.052389+00:00,scripts/configure-cluster.sh --apply --confirm-cluster-creation,No cluster-creation or join command was run. No live node readiness evidence was available.,"Only proceed after all node preflight checks PASS, empty guest inventory is verified and typed approval is entered."
+Membership / quorum / Corosync / storage / network,NOT RUN,2026-10-13T04:44:59.052389+00:00,pvecm status; pvecm nodes; pvesm status; inspect corosync links,No running cluster was inspected from this environment.,Generate the live reports after running the gated cluster workflow. Consider a QDevice or third voting node for two-node quorum resilience.

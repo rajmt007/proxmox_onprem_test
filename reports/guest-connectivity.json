@@ -1,0 +1,33 @@
+{
+  "title": "Guest-to-guest connectivity status snapshot",
+  "generated_at_utc": "2026-10-13T04:44:59.052389+00:00",
+  "overall_status": "BLOCKED",
+  "is_live_report": false,
+  "note": "Initial repository-time snapshot only. Regenerate through scripts on the user's host/LAN; NOT RUN is not a pass.",
+  "checks": [
+    {
+      "name": "Windows and Ubuntu VM creation",
+      "status": "BLOCKED",
+      "command": "scripts/deploy-guests.sh --dry-run then explicit apply gate",
+      "evidence": "Blocked because no live cluster/quorum/storage/ISO/IP/VMID evidence or user-supplied guest network values are available here.",
+      "remediation": "Supply verified guest IDs, guest IPs, prefix, gateway, bridge, storage IDs and official installation media; complete live preflight first.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "Ubuntu to Windows connectivity",
+      "status": "NOT RUN",
+      "command": "scripts/test-guest-connectivity.sh using Ubuntu SSH endpoint",
+      "evidence": "Guest VM addresses/endpoints and OS installs are unknown; no guest probe ran.",
+      "remediation": "After guest installs and network configuration, run the two-direction connectivity script from a management host with SSH access to both guests.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "Windows to Ubuntu connectivity",
+      "status": "NOT RUN",
+      "command": "scripts/test-guest-connectivity.sh using Windows SSH endpoint",
+      "evidence": "Guest VM addresses/endpoints and OS installs are unknown; no guest probe ran.",
+      "remediation": "If Echo is blocked, diagnose routing/firewall; do not disable firewalls globally. A narrow, approved ICMP rule or TCP service test may help.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    }
+  ]
+}

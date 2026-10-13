@@ -72,3 +72,11 @@ config/vm-specs.yaml
 Thumbs.db
 .vscode/
 .idea/
+
+# Keep the initial sanitized status snapshots tracked; generated live data stays ignored.
+!reports/proxmox-preflight.json
+!reports/proxmox-preflight.csv
+!reports/cluster-status.json
+!reports/cluster-status.csv
+!reports/guest-connectivity.json
+!reports/guest-connectivity.csv

@@ -1,0 +1,25 @@
+{
+  "title": "Proxmox cluster status snapshot",
+  "generated_at_utc": "2026-10-13T04:44:59.052389+00:00",
+  "overall_status": "BLOCKED",
+  "is_live_report": false,
+  "note": "Initial repository-time snapshot only. Regenerate through scripts on the user's host/LAN; NOT RUN is not a pass.",
+  "checks": [
+    {
+      "name": "Cluster creation / join",
+      "status": "NOT RUN",
+      "command": "scripts/configure-cluster.sh --apply --confirm-cluster-creation",
+      "evidence": "No cluster-creation or join command was run. No live node readiness evidence was available.",
+      "remediation": "Only proceed after all node preflight checks PASS, empty guest inventory is verified and typed approval is entered.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    },
+    {
+      "name": "Membership / quorum / Corosync / storage / network",
+      "status": "NOT RUN",
+      "command": "pvecm status; pvecm nodes; pvesm status; inspect corosync links",
+      "evidence": "No running cluster was inspected from this environment.",
+      "remediation": "Generate the live reports after running the gated cluster workflow. Consider a QDevice or third voting node for two-node quorum resilience.",
+      "timestamp_utc": "2026-10-13T04:44:59.052389+00:00"
+    }
+  ]
+}

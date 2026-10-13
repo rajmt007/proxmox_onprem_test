@@ -36,6 +36,8 @@ fi
 
 run_check 'SSH reachability pve01' "$PVE01_HOST" 'printf reachable' 'Check routing, SSH service, known_hosts, and key-based authentication.' || true
 run_check 'SSH reachability pve02' "$PVE02_HOST" 'printf reachable' 'Check routing, SSH service, known_hosts, and key-based authentication.' || true
+run_check 'pve01 hostname' "$PVE01_HOST" "test \"\$(hostname -s)\" = pve01 && hostname -f" 'Set the installed node hostname to pve01 and verify name resolution.' || true
+run_check 'pve02 hostname' "$PVE02_HOST" "test \"\$(hostname -s)\" = pve02 && hostname -f" 'Set the installed node hostname to pve02 and verify name resolution.' || true
 run_check 'Proxmox version pve01' "$PVE01_HOST" 'pveversion' 'Install Proxmox VE on a dedicated VM; an attached ISO is not an installed node.' || true
 run_check 'Proxmox version pve02' "$PVE02_HOST" 'pveversion' 'Install compatible Proxmox VE versions on both nodes.' || true
 # Compare major/minor version numbers only after both commands return version text.
@@ -50,8 +52,18 @@ run_check 'pve01 configured target IP' "$PVE01_HOST" "ip -o -4 addr show | grep 
 run_check 'pve02 configured target IP' "$PVE02_HOST" "ip -o -4 addr show | grep -F '$PVE02_IP/'" 'Configure the requested address on the intended management interface and bridge.' || true
 run_check 'pve01 reaches pve02' "$PVE01_HOST" "ping -c 1 -W 2 '$PVE02_IP'" 'Check bridged network, routing, VLAN, and narrowly scoped ICMP/firewall rules.' || true
 run_check 'pve02 reaches pve01' "$PVE02_HOST" "ping -c 1 -W 2 '$PVE01_IP'" 'Check bridged network, routing, VLAN, and narrowly scoped ICMP/firewall rules.' || true
-run_check 'pve01 hostname resolution for pve02' "$PVE01_HOST" "getent hosts '$PVE02_HOST'" 'Ensure both hostnames resolve to the correct stable addresses from both nodes.' || true
-run_check 'pve02 hostname resolution for pve01' "$PVE02_HOST" "getent hosts '$PVE01_HOST'" 'Ensure both hostnames resolve to the correct stable addresses from both nodes.' || true
+if [[ -n "${GATEWAY:-}" ]]; then
+  if [[ "$GATEWAY" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    run_check 'pve01 gateway reachable' "$PVE01_HOST" "ping -c 1 -W 2 '$GATEWAY'" 'Verify gateway from the authoritative inventory and check the correct VLAN/routing.' || true
+    run_check 'pve02 gateway reachable' "$PVE02_HOST" "ping -c 1 -W 2 '$GATEWAY'" 'Verify gateway from the authoritative inventory and check the correct VLAN/routing.' || true
+  else
+    record 'Verified gateway value' FAIL 'GATEWAY environment variable validation' "Malformed IPv4 value: $GATEWAY" 'Set GATEWAY only from verified network inventory; do not guess it.'
+  fi
+else
+  record 'Gateway reachability' NOT RUN 'GATEWAY not supplied' 'Gateway checks are omitted rather than assuming 192.168.1.1.' 'Set GATEWAY after reading the authoritative network inventory.'
+fi
+run_check 'pve01 resolves pve02 to target IP' "$PVE01_HOST" "getent ahostsv4 '$PVE02_HOST' | awk '\$1 == \"$PVE02_IP\" { found=1 } END { exit !found }'" 'Ensure pve02 resolves to the requested stable address 192.168.1.112.' || true
+run_check 'pve02 resolves pve01 to target IP' "$PVE02_HOST" "getent ahostsv4 '$PVE01_HOST' | awk '\$1 == \"$PVE01_IP\" { found=1 } END { exit !found }'" 'Ensure pve01 resolves to the requested stable address 192.168.1.111.' || true
 run_check 'pve01 time synchronization' "$PVE01_HOST" "timedatectl show -p NTPSynchronized --value | grep -Ei '^(yes|true)$'" 'Configure working NTP/time synchronization.' || true
 run_check 'pve02 time synchronization' "$PVE02_HOST" "timedatectl show -p NTPSynchronized --value | grep -Ei '^(yes|true)$'" 'Configure working NTP/time synchronization.' || true
 run_check 'pve01 nested KVM available' "$PVE01_HOST" 'test -e /dev/kvm && test -r /dev/kvm' 'Enable VMware nested virtualization and ensure host/BIOS virtualization support is exposed.' || true
