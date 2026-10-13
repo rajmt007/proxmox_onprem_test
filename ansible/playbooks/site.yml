@@ -1,0 +1,3 @@
+---
+# Safe default entrypoint: read-only preflight only.
+- import_playbook: preflight.yml

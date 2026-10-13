@@ -1,0 +1,40 @@
+---
+proxmox_api_host: 192.168.1.111
+proxmox_api_port: 8006
+proxmox_api_user: "{{ lookup('env', 'PROXMOX_USER') | default('', true) }}"
+proxmox_api_token_id: "{{ lookup('env', 'PROXMOX_TOKEN_ID') | default('', true) }}"
+proxmox_api_token_secret: "{{ lookup('env', 'PROXMOX_TOKEN_SECRET') | default('', true) }}"
+proxmox_master_password: "{{ lookup('env', 'PROXMOX_MASTER_PASSWORD') | default('', true) }}"
+proxmox_validate_certs: true
+proxmox_cluster_name: proxmox-lab
+
+pve_vm_storage: "{{ lookup('env', 'PVE_VM_STORAGE') | default('', true) }}"
+pve_iso_storage: "{{ lookup('env', 'PVE_ISO_STORAGE') | default('', true) }}"
+pve_bridge: "{{ lookup('env', 'PVE_BRIDGE') | default('', true) }}"
+windows_iso_name: "{{ lookup('env', 'WINDOWS_ISO_NAME') | default('', true) }}"
+windows_virtio_iso_name: "{{ lookup('env', 'WINDOWS_VIRTIO_ISO_NAME') | default('', true) }}"
+ubuntu_iso_name: "{{ lookup('env', 'UBUNTU_ISO_NAME') | default('', true) }}"
+windows_guest_ip: "{{ lookup('env', 'WINDOWS_GUEST_IP') | default('', true) }}"
+ubuntu_guest_ip: "{{ lookup('env', 'UBUNTU_GUEST_IP') | default('', true) }}"
+ip_reservations_confirmed: "{{ lookup('env', 'IP_RESERVATIONS_CONFIRMED') | default('false', true) | bool }}"
+
+cluster_create_enabled: false
+guest_deploy_enabled: false
+
+windows_vm:
+  name: windows-lab
+  vmid: 120
+  node: pve01
+  cores: 4
+  memory_mb: 8192
+  disk_gb: 80
+  ostype: win10
+
+ubuntu_vm:
+  name: ubuntu-lab
+  vmid: 121
+  node: pve02
+  cores: 2
+  memory_mb: 4096
+  disk_gb: 40
+  ostype: l26

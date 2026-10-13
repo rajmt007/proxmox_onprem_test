@@ -1,0 +1,189 @@
+---
+- name: Validate both nodes before cluster creation (read-only)
+  hosts: proxmox_nodes
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require explicit cluster approval
+      ansible.builtin.assert:
+        that:
+          - cluster_create_enabled | bool
+          - cluster_change_approval | default('') == 'CREATE-TWO-NODE-CLUSTER'
+        fail_msg: >-
+          Cluster changes are disabled by default. Re-run only after review with
+          -e "cluster_create_enabled=true cluster_change_approval=CREATE-TWO-NODE-CLUSTER".
+
+    - name: Require API credentials
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_user | length > 0
+          - proxmox_api_token_id | length > 0
+          - proxmox_api_token_secret | length > 0
+          - proxmox_master_password | length > 0
+        fail_msg: "Set PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET and PROXMOX_MASTER_PASSWORD in local .env."
+
+    - name: Read existing cluster configuration marker
+      ansible.builtin.stat:
+        path: /etc/pve/corosync.conf
+      register: existing_corosync_config
+
+    - name: Refuse to alter a node that already has a cluster configuration
+      ansible.builtin.assert:
+        that:
+          - not existing_corosync_config.stat.exists
+        fail_msg: "{{ inventory_hostname }} already has /etc/pve/corosync.conf. Inspect its cluster before proceeding; this playbook will not reset it."
+
+    - name: Read PVE version
+      ansible.builtin.command: pveversion -v
+      register: cluster_pve_version
+      changed_when: false
+
+    - name: Check hostname
+      ansible.builtin.command: hostname --static
+      register: cluster_hostname
+      changed_when: false
+
+    - name: Check configured IP
+      ansible.builtin.command: ip -4 -o addr show
+      register: cluster_ip_output
+      changed_when: false
+
+    - name: Ping peer
+      ansible.builtin.command:
+        argv: [ping, -c, "3", -W, "2", "{{ proxmox_peer_ip }}"]
+      register: cluster_peer_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Check time sync
+      ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+      register: cluster_ntp
+      changed_when: false
+
+    - name: Check nested virtualization
+      ansible.builtin.shell: "grep -m 1 -E -o 'vmx|svm' /proc/cpuinfo"
+      args:
+        executable: /bin/bash
+      register: cluster_virt_flags
+      changed_when: false
+      failed_when: false
+
+    - name: Assert node readiness
+      ansible.builtin.assert:
+        that:
+          - cluster_pve_version.rc == 0
+          - cluster_hostname.stdout | trim == inventory_hostname
+          - proxmox_node_ip in cluster_ip_output.stdout
+          - cluster_peer_ping.rc == 0
+          - cluster_ntp.stdout | trim | lower == 'yes'
+          - cluster_virt_flags.rc == 0
+        fail_msg: "Preflight failed on {{ inventory_hostname }}. Fix the errors before cluster creation."
+
+    - name: Extract manager release
+      ansible.builtin.set_fact:
+        pve_manager_release: "{{ (cluster_pve_version.stdout_lines | select('match', '^pve-manager/') | list | first | default('unknown')).split('/')[1] | default('unknown') }}"
+
+    - name: Require matching manager release
+      ansible.builtin.assert:
+        that:
+          - pve_manager_release == hostvars['pve01'].pve_manager_release
+        fail_msg: "Proxmox manager releases differ between nodes."
+
+- name: Check inventory before cluster changes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require Envir inventory with no IP ownership conflicts
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../scripts/check_envir_inventory.py"
+          - --workbook
+          - "{{ lookup('env', 'ENVIR_WORKBOOK') | default(playbook_dir ~ '/../inventory/environment-inventory.xlsx', true) }}"
+          - --target
+          - pve01=192.168.1.111
+          - --target
+          - pve02=192.168.1.112
+      changed_when: false
+
+- name: Create cluster on pve01
+  hosts: pve01
+  gather_facts: false
+  tasks:
+    - name: Create cluster through the Proxmox API
+      community.proxmox.proxmox_cluster:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        state: present
+        cluster_name: "{{ proxmox_cluster_name }}"
+        link0: "{{ proxmox_node_ip }}"
+      no_log: true
+
+    - name: Retrieve join information and fingerprint
+      community.proxmox.proxmox_cluster_join_info:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+      register: cluster_join_data
+      no_log: true
+
+    - name: Extract pve01 fingerprint
+      ansible.builtin.set_fact:
+        proxmox_master_fingerprint: "{{ (cluster_join_data.nodelist | selectattr('name', 'equalto', 'pve01') | map(attribute='pve_fp') | list | first) | default('') }}"
+
+    - name: Require fingerprint
+      ansible.builtin.assert:
+        that:
+          - proxmox_master_fingerprint | length > 0
+        fail_msg: "No cluster master fingerprint returned; stop and inspect the cluster."
+
+- name: Join pve02 to the new cluster
+  hosts: pve02
+  gather_facts: false
+  tasks:
+    - name: Join using the verified master fingerprint
+      community.proxmox.proxmox_cluster:
+        api_host: "{{ proxmox_node_ip }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        master_api_password: "{{ proxmox_master_password }}"
+        master_ip: "{{ hostvars['pve01'].proxmox_node_ip }}"
+        fingerprint: "{{ hostvars['pve01'].proxmox_master_fingerprint }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        state: present
+      no_log: true
+
+- name: Verify quorum and cluster members
+  hosts: pve01
+  gather_facts: false
+  tasks:
+    - name: Read cluster status
+      ansible.builtin.command: pvecm status
+      register: final_cluster_status
+      changed_when: false
+
+    - name: Read cluster nodes
+      ansible.builtin.command: pvecm nodes
+      register: final_cluster_nodes
+      changed_when: false
+
+    - name: Require quorum and both nodes
+      ansible.builtin.assert:
+        that:
+          - "'Quorate: Yes' in final_cluster_status.stdout"
+          - "'pve01' in final_cluster_nodes.stdout"
+          - "'pve02' in final_cluster_nodes.stdout"
+        fail_msg: "Cluster health failed. Do not deploy guests; review pvecm status, pvecm nodes and Corosync logs."
+    - name: Show verified cluster status
+      ansible.builtin.debug:
+        var: final_cluster_status.stdout

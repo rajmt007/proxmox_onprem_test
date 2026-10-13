@@ -1,0 +1,41 @@
+# Secrets/local config
+.env
+.env.*
+!.env.example
+!**/.env.example
+**/.vault_pass
+**/vault-password-file
+**/secrets/
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Python / Ansible
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ansible/
+*.retry
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# VM media/disks
+*.iso
+*.vmdk
+*.vdi
+*.qcow2
+*.ova
+*.ovf
+*.vmx.lck/
+
+# Local inventory/runtime reports may contain internal details
+ansible/inventory/environment-inventory.xlsx
+reports/*.json
+reports/*.csv
+reports/*.log

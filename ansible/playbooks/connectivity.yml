@@ -1,0 +1,117 @@
+---
+- name: Validate credentials and build ephemeral guest inventory
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require guest IPs and management credentials
+      ansible.builtin.assert:
+        that:
+          - windows_guest_ip | length > 0
+          - ubuntu_guest_ip | length > 0
+          - windows_guest_ip != ubuntu_guest_ip
+          - lookup('env', 'WINRM_USER') | length > 0
+          - lookup('env', 'WINRM_PASSWORD') | length > 0
+          - lookup('env', 'UBUNTU_SSH_USER') | length > 0
+          - lookup('env', 'UBUNTU_SSH_KEY') | length > 0
+        fail_msg: "Set guest IPs and WinRM/SSH credentials in local .env."
+
+    - name: Add Windows guest
+      ansible.builtin.add_host:
+        name: windows01
+        groups: windows_for_connectivity
+        ansible_host: "{{ windows_guest_ip }}"
+        ansible_connection: winrm
+        ansible_user: "{{ lookup('env', 'WINRM_USER') }}"
+        ansible_password: "{{ lookup('env', 'WINRM_PASSWORD') }}"
+        ansible_port: "{{ lookup('env', 'WINRM_PORT') | default('5986', true) | int }}"
+        ansible_winrm_scheme: https
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: "{{ lookup('env', 'WINRM_CERT_VALIDATION') | default('validate', true) }}"
+      no_log: true
+
+    - name: Add Ubuntu guest
+      ansible.builtin.add_host:
+        name: ubuntu01
+        groups: ubuntu_for_connectivity
+        ansible_host: "{{ ubuntu_guest_ip }}"
+        ansible_connection: ssh
+        ansible_user: "{{ lookup('env', 'UBUNTU_SSH_USER') }}"
+        ansible_ssh_private_key_file: "{{ lookup('env', 'UBUNTU_SSH_KEY') }}"
+        ansible_python_interpreter: /usr/bin/python3
+      no_log: true
+
+- name: Ping Windows from Ubuntu
+  hosts: ubuntu_for_connectivity
+  gather_facts: false
+  tasks:
+    - name: Run ping to Windows
+      ansible.builtin.command:
+        argv: [ping, -c, "3", -W, "2", "{{ hostvars['windows01'].ansible_host }}"]
+      register: ubuntu_to_windows_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Save Ubuntu-to-Windows status
+      ansible.builtin.set_fact:
+        ubuntu_to_windows_status: "{{ 'PASS' if ubuntu_to_windows_ping.rc == 0 else 'FAIL_OR_FIREWALL_BLOCKED' }}"
+
+    - name: Display Ubuntu-to-Windows status
+      ansible.builtin.debug:
+        msg:
+          direction: Ubuntu_to_Windows
+          status: "{{ ubuntu_to_windows_status }}"
+          output: "{{ ubuntu_to_windows_ping.stdout | default('No output') }}"
+
+- name: Ping Ubuntu from Windows
+  hosts: windows_for_connectivity
+  gather_facts: false
+  tasks:
+    - name: Run Test-Connection to Ubuntu
+      ansible.windows.win_powershell:
+        script: |
+          $Target = "{{ hostvars['ubuntu01'].ansible_host }}"
+          $Success = [bool](Test-Connection -ComputerName $Target -Count 3 -Quiet -ErrorAction SilentlyContinue)
+          $Ansible.Result = @{ target = $Target; success = $Success; tested_at = (Get-Date).ToString('o') }
+      register: windows_to_ubuntu_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Save Windows-to-Ubuntu status
+      ansible.builtin.set_fact:
+        windows_to_ubuntu_status: "{{ 'PASS' if (windows_to_ubuntu_ping.result.success | default(false) | bool) else 'FAIL_OR_FIREWALL_BLOCKED' }}"
+
+    - name: Display Windows-to-Ubuntu status
+      ansible.builtin.debug:
+        msg:
+          direction: Windows_to_Ubuntu
+          status: "{{ windows_to_ubuntu_status }}"
+          result: "{{ windows_to_ubuntu_ping.result | default({}) }}"
+
+- name: Write guest connectivity report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Create reports directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../../reports"
+        state: directory
+        mode: "0750"
+
+    - name: Write JSON report
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../reports/guest-connectivity.json"
+        mode: "0640"
+        content: |
+          {
+            "generated_at": {{ lookup('pipe', 'date -Is') | to_json }},
+            "ubuntu_to_windows": {
+              "status": {{ hostvars['ubuntu01'].ubuntu_to_windows_status | default('NOT RUN') | to_json }},
+              "output": {{ hostvars['ubuntu01'].ubuntu_to_windows_ping.stdout | default('NOT RUN') | to_json }}
+            },
+            "windows_to_ubuntu": {
+              "status": {{ hostvars['windows01'].windows_to_ubuntu_status | default('NOT RUN') | to_json }},
+              "result": {{ hostvars['windows01'].windows_to_ubuntu_ping.result | default({}) | to_json }}
+            }
+          }

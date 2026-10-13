@@ -1,0 +1,198 @@
+---
+- name: Require a healthy, quorate cluster
+  hosts: pve01
+  gather_facts: false
+  tasks:
+    - name: Read cluster quorum
+      ansible.builtin.command: pvecm status
+      register: deploy_cluster_status
+      changed_when: false
+
+    - name: Assert cluster is quorate
+      ansible.builtin.assert:
+        that:
+          - deploy_cluster_status.rc == 0
+          - "'Quorate: Yes' in deploy_cluster_status.stdout"
+        fail_msg: "Deployment blocked because cluster quorum is not healthy."
+
+- name: Validate inputs and create the two guest VM shells
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require explicit guest-deployment approval
+      ansible.builtin.assert:
+        that:
+          - guest_deploy_enabled | bool
+          - guest_deploy_approval | default('') == 'DEPLOY-WINDOWS-UBUNTU-VMs'
+        fail_msg: 'Guest deployment disabled. Review and rerun with -e "guest_deploy_enabled=true guest_deploy_approval=DEPLOY-WINDOWS-UBUNTU-VMs".'
+
+    - name: Require unique and approved guest addresses
+      ansible.builtin.assert:
+        that:
+          - ip_reservations_confirmed | bool
+          - windows_guest_ip | length > 0
+          - ubuntu_guest_ip | length > 0
+          - windows_guest_ip != ubuntu_guest_ip
+          - windows_guest_ip not in ['192.168.1.111', '192.168.1.112']
+          - ubuntu_guest_ip not in ['192.168.1.111', '192.168.1.112']
+        fail_msg: "Set unique guest IPs and IP_RESERVATIONS_CONFIRMED=true only after checking Envir, DHCP/router/IPAM and live conflicts."
+
+    - name: Require storage, bridge and official ISO filenames
+      ansible.builtin.assert:
+        that:
+          - pve_vm_storage | length > 0
+          - pve_iso_storage | length > 0
+          - pve_bridge | length > 0
+          - windows_iso_name | length > 0
+          - windows_virtio_iso_name | length > 0
+          - ubuntu_iso_name | length > 0
+        fail_msg: "Configure PVE_VM_STORAGE, PVE_ISO_STORAGE, PVE_BRIDGE and ISO names in .env."
+
+    - name: Require API credentials
+      ansible.builtin.assert:
+        that:
+          - proxmox_api_user | length > 0
+          - proxmox_api_token_id | length > 0
+          - proxmox_api_token_secret | length > 0
+        fail_msg: "Set Proxmox API credentials in local .env."
+
+    - name: Verify inventory IP ownership
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../scripts/check_envir_inventory.py"
+          - --workbook
+          - "{{ lookup('env', 'ENVIR_WORKBOOK') | default(playbook_dir ~ '/../inventory/environment-inventory.xlsx', true) }}"
+          - --target
+          - pve01=192.168.1.111
+          - --target
+          - pve02=192.168.1.112
+          - --target
+          - "windows-lab={{ windows_guest_ip }}"
+          - --target
+          - "ubuntu-lab={{ ubuntu_guest_ip }}"
+      changed_when: false
+
+    - name: Query existing VM IDs in the cluster
+      ansible.builtin.uri:
+        url: "https://{{ proxmox_api_host }}:{{ proxmox_api_port }}/api2/json/cluster/resources?type=vm"
+        method: GET
+        headers:
+          Authorization: "PVEAPIToken={{ proxmox_api_user }}!{{ proxmox_api_token_id }}={{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        status_code: 200
+        return_content: true
+      register: existing_vm_resources
+      no_log: true
+
+    - name: Refuse to reuse existing VM IDs
+      ansible.builtin.assert:
+        that:
+          - ([windows_vm.vmid | int, ubuntu_vm.vmid | int] | intersect(existing_vm_resources.json.data | map(attribute='vmid') | map('int') | list) | length) == 0
+        fail_msg: "VM ID 120 or 121 already exists. Select unused IDs; this playbook will not overwrite existing guests."
+
+    - name: Create Windows installer VM (not yet an installed OS)
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        node: "{{ windows_vm.node }}"
+        vmid: "{{ windows_vm.vmid }}"
+        name: "{{ windows_vm.name }}"
+        ostype: "{{ windows_vm.ostype }}"
+        cores: "{{ windows_vm.cores }}"
+        memory: "{{ windows_vm.memory_mb }}"
+        scsihw: virtio-scsi-single
+        scsi:
+          scsi0: "{{ pve_vm_storage }}:{{ windows_vm.disk_gb }},format=qcow2"
+        ide:
+          ide2: "{{ pve_iso_storage }}:iso/{{ windows_iso_name }},media=cdrom"
+          ide3: "{{ pve_iso_storage }}:iso/{{ windows_virtio_iso_name }},media=cdrom"
+        net:
+          net0: "virtio,bridge={{ pve_bridge }}"
+        boot: "order=ide2;scsi0;net0"
+        agent: "enabled=1"
+        onboot: false
+        state: present
+      no_log: true
+
+    - name: Create Ubuntu installer VM (not yet an installed OS)
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        node: "{{ ubuntu_vm.node }}"
+        vmid: "{{ ubuntu_vm.vmid }}"
+        name: "{{ ubuntu_vm.name }}"
+        ostype: "{{ ubuntu_vm.ostype }}"
+        cores: "{{ ubuntu_vm.cores }}"
+        memory: "{{ ubuntu_vm.memory_mb }}"
+        scsihw: virtio-scsi-single
+        scsi:
+          scsi0: "{{ pve_vm_storage }}:{{ ubuntu_vm.disk_gb }},format=qcow2"
+        ide:
+          ide2: "{{ pve_iso_storage }}:iso/{{ ubuntu_iso_name }},media=cdrom"
+        net:
+          net0: "virtio,bridge={{ pve_bridge }}"
+        boot: "order=ide2;scsi0;net0"
+        agent: "enabled=1"
+        onboot: false
+        state: present
+      no_log: true
+
+    - name: Start Windows installer VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        node: "{{ windows_vm.node }}"
+        vmid: "{{ windows_vm.vmid }}"
+        name: "{{ windows_vm.name }}"
+        state: started
+      no_log: true
+
+    - name: Start Ubuntu installer VM
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_port: "{{ proxmox_api_port }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        node: "{{ ubuntu_vm.node }}"
+        vmid: "{{ ubuntu_vm.vmid }}"
+        name: "{{ ubuntu_vm.name }}"
+        state: started
+      no_log: true
+
+    - name: Create reports directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../../reports"
+        state: directory
+        mode: "0750"
+
+    - name: Write guest deployment status
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/../../reports/guest-deployment.json"
+        mode: "0640"
+        content: |
+          {
+            "generated_at": {{ lookup('pipe', 'date -Is') | to_json }},
+            "status": "VM shells created and started; OS setup remains a manual console step",
+            "windows": {"name": {{ windows_vm.name | to_json }}, "vmid": {{ windows_vm.vmid | int }}, "node": {{ windows_vm.node | to_json }}, "planned_ip": {{ windows_guest_ip | to_json }}},
+            "ubuntu": {"name": {{ ubuntu_vm.name | to_json }}, "vmid": {{ ubuntu_vm.vmid | int }}, "node": {{ ubuntu_vm.node | to_json }}, "planned_ip": {{ ubuntu_guest_ip | to_json }}}
+          }
+
+    - name: State next manual steps
+      ansible.builtin.debug:
+        msg: "VM shells are started. Complete Windows and Ubuntu installation in the Proxmox console, configure their IPs, and enable WinRM/SSH before connectivity.yml."
