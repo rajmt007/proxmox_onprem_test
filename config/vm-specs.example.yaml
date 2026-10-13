@@ -1,0 +1,37 @@
+# Guest definitions are templates only. Set actual IDs, addresses, ISO names,
+# storage, and bridge after checking inventory and the live Proxmox cluster.
+guests:
+  windows:
+    name: win-lab01
+    vm_id: null
+    node: null
+    vcpu: 2
+    memory_mib: 4096
+    disk_gib: 80
+    iso_filename: ""
+    ip_address: null
+    subnet_prefix: null
+    gateway: null
+    firmware: uefi
+    tpm_required: false # set true for Windows 11 and configure supported TPM/Secure Boot
+    virtio_driver_iso: "" # optional, official VirtIO ISO from Fedora project
+    install_mode: interactive
+  ubuntu:
+    name: ubuntu-lab01
+    vm_id: null
+    node: null
+    vcpu: 2
+    memory_mib: 2048
+    disk_gib: 32
+    iso_filename: ""
+    ip_address: null
+    subnet_prefix: null
+    gateway: null
+    ssh_public_key_path: "" # never put a private key in this file
+    install_mode: interactive # use cloud-init only with a supported prepared image
+
+shared:
+  storage: null
+  bridge: null
+  guest_network_prefix: null
+  dns_servers: []

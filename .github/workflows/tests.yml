@@ -1,0 +1,21 @@
+name: Safety and config tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run offline unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate shell syntax
+        run: bash -n scripts/preflight.sh scripts/check-proxmox-nodes.sh scripts/configure-cluster.sh scripts/deploy-guests.sh scripts/test-guest-connectivity.sh
+      - name: Validate inventory workbook and proposed targets
+        run: python scripts/inventory_check.py --path inventory/environment-inventory.xlsx --worksheet Envir --target-ip 192.168.1.111 --target-ip 192.168.1.112

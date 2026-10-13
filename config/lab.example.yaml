@@ -1,0 +1,51 @@
+# Copy to lab.yaml (ignored by Git) and supply the actual environment values.
+# Values marked null or empty are intentionally not guessed.
+lab:
+  name: proxmox-nested-lab
+  cluster_name: ""            # REQUIRED before cluster creation
+  dry_run: true
+
+host:
+  os: auto
+  minimum_free_disk_gib: 150   # planning threshold only; check actual storage
+  minimum_free_ram_gib: 20     # planning threshold only; check actual host RAM
+  nested_virtualization_required: true
+
+vmware:
+  product: auto                # Player or Workstation
+  vmx_hardware_version: ""    # optional; select a version supported by installed VMware
+  network_mode: bridged        # verify this matches your LAN design
+
+proxmox_nodes:
+  - name: pve01
+    ip_address: 192.168.1.111  # requested target, NOT confirmed available
+    cpu_cores: 4               # example sizing; adjust to host capacity
+    memory_mib: 8192           # example sizing; adjust to host capacity
+    disk_gib: 64                # example sizing; installation erases this VM disk
+  - name: pve02
+    ip_address: 192.168.1.112  # requested target, NOT confirmed available
+    cpu_cores: 4
+    memory_mib: 8192
+    disk_gib: 64
+
+network:
+  subnet_prefix: null          # e.g. 24 only after checking actual network
+  gateway: null                # do not assume 192.168.1.1
+  dns_servers: []               # populate from inventory/network owner
+  vlan_or_network: null
+  vm_bridge: null               # e.g. vmbr0 only after checking the installed nodes
+  corosync_link0_network: null  # use a stable, low-latency node-to-node network
+
+media:
+  proxmox_iso_path: ""         # user-provided official ISO path
+  windows_iso_path: ""         # official Microsoft ISO; no product key in config
+  ubuntu_iso_path: ""          # official Ubuntu ISO; verify official checksum
+
+inventory:
+  path: inventory/environment-inventory.xlsx
+  worksheet: Envir
+
+safety:
+  require_explicit_approval: true
+  reject_unknown_ip_availability: true
+  allow_destroy: false

@@ -10,6 +10,11 @@
 *.key
 id_rsa
 id_ed25519
+known_hosts
+*.p12
+*.pfx
+*.secret
+secrets/
 
 # Python / Ansible
 __pycache__/
@@ -18,24 +23,52 @@ __pycache__/
 venv/
 .ansible/
 *.retry
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Terraform
 **/.terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.auto.tfvars
+*.tfvars
+crash.log
+crash.*.log
 
-# VM media/disks
+# VM media/disks/state
 *.iso
 *.vmdk
 *.vdi
 *.qcow2
+*.vma
 *.ova
 *.ovf
 *.vmx.lck/
+*.nvram
+*.vmsd
+*.vmsn
+*.vmem
+*.vmss
+*.vmsw
 
 # Local inventory/runtime reports may contain internal details
 ansible/inventory/environment-inventory.xlsx
 reports/*.json
 reports/*.csv
 reports/*.log
+reports/generated/
+reports/*-live.*
+reports/*-sensitive.*
+!reports/.gitkeep
+inventory/*.local.xlsx
+inventory/*.local.csv
+config/lab.yaml
+config/vm-specs.yaml
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
