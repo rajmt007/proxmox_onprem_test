@@ -108,7 +108,7 @@
         memory: "{{ windows_vm.memory_mb }}"
         scsihw: virtio-scsi-single
         scsi:
-          scsi0: "{{ pve_vm_storage }}:{{ windows_vm.disk_gb }},format=qcow2"
+          scsi0: "{{ pve_vm_storage }}:{{ windows_vm.disk_gb }}"
         ide:
           ide2: "{{ pve_iso_storage }}:iso/{{ windows_iso_name }},media=cdrom"
           ide3: "{{ pve_iso_storage }}:iso/{{ windows_virtio_iso_name }},media=cdrom"
@@ -136,7 +136,7 @@
         memory: "{{ ubuntu_vm.memory_mb }}"
         scsihw: virtio-scsi-single
         scsi:
-          scsi0: "{{ pve_vm_storage }}:{{ ubuntu_vm.disk_gb }},format=qcow2"
+          scsi0: "{{ pve_vm_storage }}:{{ ubuntu_vm.disk_gb }}"
         ide:
           ide2: "{{ pve_iso_storage }}:iso/{{ ubuntu_iso_name }},media=cdrom"
         net:
@@ -190,7 +190,7 @@
             "generated_at": {{ lookup('pipe', 'date -Is') | to_json }},
             "status": "VM shells created and started; OS setup remains a manual console step",
             "windows": {"name": {{ windows_vm.name | to_json }}, "vmid": {{ windows_vm.vmid | int }}, "node": {{ windows_vm.node | to_json }}, "planned_ip": {{ windows_guest_ip | to_json }}},
-            "ubuntu": {"name": {{ ubuntu_vm.name | to_json }}, "vmid": {{ ubuntu_vm.vmid | int }}, "node": {{ ubuntu_vm.node | to_json }}, "planned_ip": {{ ubuntu_guest_ip | to_json }}}
+            "ubuntu": {"name": {{ ubuntu_vm.name | to_json }}, "vmid": {{ ubuntu_vm.vmid | int }}, "node": {{ ubuntu_vm.node | to_json }}, "planned_ip": {{ ubuntu_guest_ip | to_json }]}
           }
 
     - name: State next manual steps
